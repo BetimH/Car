@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Engine Sound Simulator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #202b46, #050712);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: rgba(12, 16, 32, 0.9);
+      border-radius: 18px;
+      padding: 20px 18px 24px;
+      box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(16px);
+    }
+
+    .title {
+      font-size: 1.4rem;
+      margin-bottom: 4px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .subtitle {
+      font-size: 0.85rem;
+      text-align: center;
+      opacity: 0.8;
+      margin-bottom: 16px;
+    }
+
+    .rpm-display {
+      text-align: center;
+      margin-bottom: 18px;
+    }
+
+    .rpm-label {
+      font-size: 0.85rem;
+      opacity: 0.8;
+    }
+
+    .rpm-value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      margin-top: 4px;
+    }
+
+    .slider-wrap {
+      margin: 12px 4px 4px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      appearance: none;
+      height: 6px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #3b82f6, #22c55e, #f59e0b, #ef4444);
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      appearance: none;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #fff;
+      border: 3px solid #3b82f6;
+      box-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
+      margin-top: -8px;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: #fff;
+      border: 3px solid #3b82f6;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 10px 0;
+      border-radius: 999px;
+      border: none;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s ease, box-shadow 0.1s ease, background 0.15s ease;
+    }
+
+    .btn-main {
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      color: #fff;
+      box-shadow: 0 0 18px rgba(59, 130, 246, 0.6);
+    }
+
+    .btn-main.off {
+      background: linear-gradient(135deg, #4b5563, #111827);
+      box-shadow: none;
+      opacity: 0.9;
+    }
+
+    .btn-secondary {
+      background: rgba(15, 23, 42, 0.9);
+      border: 1px solid rgba(148, 163, 184, 0.6);
+      color: #e5e7eb;
+    }
+
+    .btn:active {
+      transform: scale(0.97);
+      box-shadow: 0 0 8px rgba(0, 0, 0, 0.4);
+    }
+
+    .hint {
+      margin-top: 14px;
+      font-size: 0.78rem;
+      text-align: center;
+      opacity: 0.7;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="title">Engine Sound Simulator</div>
+    <div class="subtitle">Connect iPhone to car via Bluetooth / AUX and rev it 🔊</div>
+
+    <div class="rpm-display">
+      <div class="rpm-label">RPM</div>
+      <div class="rpm-value" id="rpmValue">800</div>
+    </div>
+
+    <div class="slider-wrap">
+      <input
+        id="rpmSlider"
+        type="range"
+        min="800"
+        max="4000"
+        value="800"
+        step="50"
+      />
+    </div>
+
+    <div class="buttons">
+      <button id="engineToggle" class="btn btn-main off">Start Engine</button>
+      <button id="revButton" class="btn btn-secondary">Rev</button>
+    </div>
+
+    <div class="hint">
+      1. Tap <b>Start Engine</b> (required by iOS to allow sound).<br />
+      2. Move the slider or tap <b>Rev</b> to change sound.<br />
+      3. Use Bluetooth / AUX for car speakers.
+    </div>
+  </div>
+
+  <!-- Hidden audio element -->
+  <audio id="engineAudio" src="engine.mp3" loop></audio>
+
+<script>
+  const minRPM = 800;
+  const maxRPM = 4000;
+
+  const rpmSlider = document.getElementById("rpmSlider");
+  const rpmValue = document.getElementById("rpmValue");
+  const engineAudio = document.getElementById("engineAudio");
+  const engineToggle = document.getElementById("engineToggle");
+  const revButton = document.getElementById("revButton");
+
+  let engineOn = false;
+  let currentRPM = minRPM;
+  let revTimeout = null;
+  let motionEnabled = false;
+
+  engineAudio.loop = true;
+
+  function rpmToParams(rpm) {
+    const clamped = Math.min(maxRPM, Math.max(minRPM, rpm));
+    const ratio = (clamped - minRPM) / (maxRPM - minRPM); // 0..1
+
+    const playbackRate = 0.8 + ratio * 1.2; // 0.8x → 2.0x
+    const volume = 0.3 + ratio * 0.7;       // 0.3 → 1.0
+
+    return { playbackRate, volume, rpm: clamped };
+  }
+
+  async function ensurePlaying() {
+    if (engineOn && engineAudio.paused) {
+      try {
+        await engineAudio.play();
+      } catch (err) {
+        console.error("Play error:", err);
+      }
+    }
+  }
+
+  async function applySound(rpm) {
+    const { playbackRate, volume, rpm: cleanRPM } = rpmToParams(rpm);
+    currentRPM = cleanRPM;
+    rpmValue.textContent = Math.round(cleanRPM);
+
+    engineAudio.playbackRate = playbackRate;
+    engineAudio.volume = volume;
+
+    await ensurePlaying();
+  }
+
+  function startMotion() {
+    if (motionEnabled) return;
+    motionEnabled = true;
+
+    window.addEventListener("devicemotion", (event) => {
+      if (!engineOn) return;
+
+      // Use accelerationIncludingGravity to be more stable
+      const acc = event.accelerationIncludingGravity || event.acceleration;
+      if (!acc) return;
+
+      // Phone lying flat, top towards front:
+      // forward accel is roughly -acc.y (this is a heuristic)
+      let forward = -(acc.y || 0);
+
+      // We only care about positive (accelerating), ignore braking
+      if (forward < 0) forward = 0;
+
+      // Tune this multiplier if it feels too weak/strong
+      const factor = 3500; // how much RPM per "g" of acceleration
+      let targetRPM = minRPM + forward * factor;
+
+      // Clamp
+      if (targetRPM > maxRPM) targetRPM = maxRPM;
+      if (targetRPM < minRPM) targetRPM = minRPM;
+
+      // Smooth transitions (low-pass filter)
+      currentRPM = currentRPM * 0.85 + targetRPM * 0.15;
+
+      rpmSlider.value = currentRPM;
+      applySound(currentRPM);
+    });
+  }
+
+  async function requestMotionPermissionIfNeeded() {
+    if (typeof DeviceMotionEvent !== "undefined" &&
+        typeof DeviceMotionEvent.requestPermission === "function") {
+
+      try {
+        const res = await DeviceMotionEvent.requestPermission();
+        if (res === "granted") {
+          startMotion();
+        } else {
+          console.log("Motion permission denied");
+        }
+      } catch (err) {
+        console.error("Motion perm error:", err);
+      }
+    } else {
+      // Non-iOS or older: just start
+      startMotion();
+    }
+  }
+
+  engineToggle.addEventListener("click", async () => {
+    if (!engineOn) {
+      try {
+        engineAudio.currentTime = 0;
+        engineAudio.playbackRate = 1.0;
+        engineAudio.volume = 0.3;
+        await engineAudio.play();
+        engineOn = true;
+        engineToggle.textContent = "Stop Engine";
+        engineToggle.classList.remove("off");
+
+        // ask for motion permission on first start
+        await requestMotionPermissionIfNeeded();
+
+        applySound(currentRPM);
+      } catch (err) {
+        console.error("Play error:", err);
+        alert("Tap anywhere on the page once, then press Start Engine again.");
+      }
+    } else {
+      engineAudio.pause();
+      engineOn = false;
+      engineToggle.textContent = "Start Engine";
+      engineToggle.classList.add("off");
+    }
+  });
+
+  // Slider still works manually
+  rpmSlider.addEventListener("input", (e) => {
+    const value = Number(e.target.value);
+    if (revTimeout) {
+      clearTimeout(revTimeout);
+      revTimeout = null;
+    }
+    applySound(value);
+  });
+
+  revButton.addEventListener("click", () => {
+    if (!engineOn) return;
+
+    if (revTimeout) {
+      clearTimeout(revTimeout);
+      revTimeout = null;
+    }
+
+    const base = Number(rpmSlider.value);
+    const peak = Math.min(maxRPM, base + 2200);
+
+    rpmSlider.value = peak;
+    applySound(peak);
+
+    revTimeout = setTimeout(() => {
+      const target = Math.max(minRPM, base);
+      rpmSlider.value = target;
+      applySound(target);
+      revTimeout = null;
+    }, 600);
+  });
+
+  applySound(minRPM);
+</script>
+</body>
+</html>
